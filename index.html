@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมจัดวางตำแหน่งอุปกรณ์รถจักร ALSTHOM</title>
+    <!-- โหลด Tailwind CSS เพื่อจัดการความสวยงาม -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- โหลด React และ ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <!-- โหลด Babel สำหรับแปลงโค้ด JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        /* ป้องกันการ select ข้อความขณะเล่นเกม */
+        body { user-select: none; -webkit-user-select: none; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        // ไอคอน
+        const RefreshIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+            </svg>
+        );
+
+        const InfoIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+                <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+            </svg>
+        );
+
+        // ข้อมูลรายชื่ออุปกรณ์ตามตารางในแบบแปลน
+        const equipmentData = [
+            "Diesel engine", "Silencer", "Alternator", "Statodyne", "Electrical block", "Rectifier block", "Traction motor", "Battery box",
+            "Lifting jack stowage", "Fuel tank", "Water tank", "Radiators", "Radiator fan", "Bevel drive gearbox", "Filters on body side", "Diesel filters",
+            "Vacuum pump", "Vacuum pump-compressor", "Auxiliary compressor", "Air reservoir", "Pneumatic block", "Traction motor blower", "Diesel air intake", "Diesel inlet air duct",
+            "Cab stowage box", "Roof access ladder", "Main driving desk", "Assistant desk", "Driving desk pneumatic", "Cooling fountain", "Pre-lubrication group", "Fuel pump group"
+        ];
+
+        const App = () => {
+            // สร้าง state โดยผูกรายชื่ออุปกรณ์เข้ากับตัวเลขแต่ละตัว
+            const initialTokens = equipmentData.map((name, i) => ({
+                id: i + 1,
+                name: name,
+                isPlaced: false,
+                xPct: 0, // เก็บตำแหน่งในรูปแบบเปอร์เซ็นต์
+                yPct: 0,
+            }));
+
+            const [tokens, setTokens] = useState(initialTokens);
+            const containerRef = useRef(null);
+            const [globalDrag, setGlobalDrag] = useState(null);
+            const [showConfirm, setShowConfirm] = useState(false);
+
+            // ฟังก์ชันรีเซ็ตทั้งหมด
+            const confirmReset = () => {
+                setTokens(initialTokens);
+                setShowConfirm(false);
+            };
+
+            // นำตัวเลขกลับไปที่ตาราง
+            const returnToTable = (id) => {
+                setTokens(prev => prev.map(t => t.id === id ? { ...t, isPlaced: false } : t));
+            };
+
+            // ฟังก์ชันเริ่มต้นการลาก
+            const handlePointerDown = (e, id, source) => {
+                // ป้องกันคลิกขวา
+                if (e.button !== 0 && e.pointerType === 'mouse') return;
+
+                const element = e.currentTarget;
+                const rect = element.getBoundingClientRect();
+                
+                setGlobalDrag({
+                    id,
+                    source,
+                    offsetX: e.clientX - rect.left,
+                    offsetY: e.clientY - rect.top,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    clientX: e.clientX,
+                    clientY: e.clientY
+                });
+            };
+
+            // อัปเดตตำแหน่งขณะลาก (ทำงานระดับ Window)
+            useEffect(() => {
+                const handlePointerMove = (e) => {
+                    if (!globalDrag) return;
+                    e.preventDefault(); // ป้องกันเลื่อนหน้าจอเวลาลากบนมือถือ
+
+                    setGlobalDrag(prev => ({
+                        ...prev,
+                        clientX: e.clientX,
+                        clientY: e.clientY
+                    }));
+                };
+
+                const handlePointerUp = (e) => {
+                    if (!globalDrag) return;
+
+                    const containerRect = containerRef.current.getBoundingClientRect();
+                    const clientX = e.clientX;
+                    const clientY = e.clientY;
+
+                    const isInsideImage = 
+                        clientX >= containerRect.left &&
+                        clientX <= containerRect.right &&
+                        clientY >= containerRect.top &&
+                        clientY <= containerRect.bottom;
+
+                    const movedX = Math.abs(clientX - globalDrag.startX);
+                    const movedY = Math.abs(clientY - globalDrag.startY);
+                    const didMove = movedX > 5 || movedY > 5;
+
+                    if (!didMove) {
+                        // กรณีแค่คลิกเฉยๆ ให้เด้งไปอยู่มุมซ้ายบนของภาพ
+                        if (globalDrag.source === 'table') {
+                            setTokens(prev => prev.map(t => 
+                                t.id === globalDrag.id ? { ...t, isPlaced: true, xPct: 5, yPct: 5 } : t
+                            ));
+                        }
+                    } else if (isInsideImage) {
+                        // คำนวณจุดกึ่งกลางของตัวเลขที่ปล่อยลงบนภาพ
+                        let dropCenterX = clientX - containerRect.left - globalDrag.offsetX + 16;
+                        let dropCenterY = clientY - containerRect.top - globalDrag.offsetY + 16;
+
+                        // จำกัดไม่ให้ออกนอกกรอบรูป
+                        dropCenterX = Math.max(16, Math.min(dropCenterX, containerRect.width - 16));
+                        dropCenterY = Math.max(16, Math.min(dropCenterY, containerRect.height - 16));
+
+                        // คำนวณเป็นเปอร์เซ็นต์ (ทำให้รองรับ Responsive)
+                        const xPct = (dropCenterX / containerRect.width) * 100;
+                        const yPct = (dropCenterY / containerRect.height) * 100;
+
+                        setTokens(prev => prev.map(t => 
+                            t.id === globalDrag.id ? { ...t, isPlaced: true, xPct, yPct } : t
+                        ));
+                    } else {
+                        // ถ้าลากออกนอกภาพ ให้กลับเข้าตาราง
+                        setTokens(prev => prev.map(t => 
+                            t.id === globalDrag.id ? { ...t, isPlaced: false } : t
+                        ));
+                    }
+
+                    setGlobalDrag(null);
+                };
+
+                if (globalDrag) {
+                    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+                    window.addEventListener('pointerup', handlePointerUp);
+                    window.addEventListener('pointercancel', handlePointerUp);
+                }
+
+                return () => {
+                    window.removeEventListener('pointermove', handlePointerMove);
+                    window.removeEventListener('pointerup', handlePointerUp);
+                    window.removeEventListener('pointercancel', handlePointerUp);
+                };
+            }, [globalDrag]);
+
+            return (
+                <div className="min-h-screen flex flex-col font-sans relative pb-10">
+                    {/* Header */}
+                    <header className="bg-blue-800 text-white p-4 shadow-md z-10 sticky top-0">
+                        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+                            <div>
+                                <h1 className="text-2xl font-bold">เกมจัดวางตำแหน่งอุปกรณ์ ALSTHOM</h1>
+                                <p className="text-blue-200 text-sm mt-1">ลากตัวเลขจากตารางไปวางบนภาพ</p>
+                            </div>
+                            <button
+                                onClick={() => setShowConfirm(true)}
+                                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors shadow-sm"
+                            >
+                                <RefreshIcon />
+                                <span>เริ่มใหม่ทั้งหมด</span>
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* Main Content */}
+                    <main className="flex-1 max-w-7xl mx-auto w-full p-4 flex flex-col gap-6 mt-2">
+                        
+                        {/* Instructions */}
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3 text-blue-800 shadow-sm">
+                            <InfoIcon />
+                            <div>
+                                <p className="font-semibold">วิธีเล่น:</p>
+                                <ul className="list-disc list-inside text-sm mt-1 space-y-1">
+                                    <li><strong>ลาก</strong> ตัวเลขที่อยู่หลังชื่ออุปกรณ์ในตารางด้านล่าง ขึ้นไปวางยังตำแหน่งอุปกรณ์ที่ถูกต้องบนรูปภาพ</li>
+                                    <li>หากวางผิด สามารถลากโยนออกนอกภาพ หรือ <strong>ดับเบิลคลิก</strong> ที่ตัวเลขบนภาพ เพื่อดึงกลับเข้าตารางได้</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        {/* Image Workspace Area */}
+                        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden relative">
+                            <div 
+                                ref={containerRef} 
+                                className="relative w-full overflow-hidden select-none bg-gray-50 flex items-center justify-center"
+                                style={{ minHeight: '300px' }}
+                            >
+                                {/* Background Image */}
+                                <img 
+                                    src="alsthom.jpg" 
+                                    alt="แบบแปลนรถจักร ALSTHOM" 
+                                    className="w-full h-auto block pointer-events-none"
+                                    draggable="false"
+                                    onError={(e) => {
+                                        e.target.style.display = 'none';
+                                        e.target.nextSibling.style.display = 'flex';
+                                    }}
+                                />
+                                <div className="hidden absolute inset-0 flex-col items-center justify-center text-gray-500 bg-gray-200">
+                                    <p>ไม่พบรูปภาพ alsthom.jpg</p>
+                                    <p className="text-sm mt-2">กรุณานำไฟล์ index.html และ alsthom.jpg ไว้ในโฟลเดอร์เดียวกัน</p>
+                                </div>
+
+                                {/* Tokens on Image */}
+                                {tokens.filter((t) => t.isPlaced).map((t) => (
+                                    <div
+                                        key={t.id}
+                                        className={`absolute w-8 h-8 flex items-center justify-center rounded-full text-white font-bold cursor-grab select-none shadow-md touch-none transition-transform
+                                            ${globalDrag?.id === t.id ? 'opacity-0' : 'bg-red-600 hover:bg-red-500 hover:scale-110 z-40'}
+                                        `}
+                                        style={{ 
+                                            left: `${t.xPct}%`, 
+                                            top: `${t.yPct}%`,
+                                            transform: 'translate(-50%, -50%)' // จัดให้อยู่ตรงกลางของเปอร์เซ็นต์พอดี
+                                        }}
+                                        onPointerDown={(e) => handlePointerDown(e, t.id, 'image')}
+                                        onDoubleClick={() => returnToTable(t.id)}
+                                        title={`ดับเบิลคลิกเพื่อเอาออก: ${t.name}`}
+                                    >
+                                        {t.id}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Equipment Table Area */}
+                        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-5 mt-2">
+                            <h2 className="text-xl font-bold text-gray-800 mb-4 pb-2 border-b">ตารางรายชื่ออุปกรณ์ (ลากหมายเลขด้านหลังไปใช้งาน)</h2>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                {tokens.map((t) => (
+                                    <div 
+                                        key={t.id} 
+                                        className={`flex justify-between items-center p-3 rounded-lg border transition-colors shadow-sm
+                                            ${t.isPlaced ? 'bg-gray-50 border-gray-200' : 'bg-blue-50 hover:bg-blue-100 border-blue-200'}
+                                        `}
+                                    >
+                                        <span className={`text-sm font-semibold truncate pr-2 ${t.isPlaced ? 'text-gray-400' : 'text-gray-800'}`} title={t.name}>
+                                            {t.name}
+                                        </span>
+                                        
+                                        {/* ตัวเลขจะอยู่หลังชื่อเสมอ */}
+                                        {t.isPlaced ? (
+                                            <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-400 flex items-center justify-center font-bold shadow-inner shrink-0 pointer-events-none">
+                                                {t.id}
+                                            </div>
+                                        ) : (
+                                            <div
+                                                onPointerDown={(e) => handlePointerDown(e, t.id, 'table')}
+                                                className="w-8 h-8 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center font-bold shadow-md cursor-grab touch-none shrink-0 transition-transform hover:scale-105"
+                                                title={`ลากตัวเลข ${t.id} ไปวางบนภาพ`}
+                                            >
+                                                {t.id}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                    </main>
+
+                    {/* Dragging Clone Element (ลอยอยู่เหนือทุกสิ่งขณะลาก) */}
+                    {globalDrag && (
+                        <div
+                            className="fixed flex items-center justify-center w-8 h-8 rounded-full bg-orange-500 text-white font-bold shadow-2xl scale-125 z-[100] cursor-grabbing pointer-events-none"
+                            style={{
+                                left: `${globalDrag.clientX - globalDrag.offsetX}px`,
+                                top: `${globalDrag.clientY - globalDrag.offsetY}px`,
+                            }}
+                        >
+                            {globalDrag.id}
+                        </div>
+                    )}
+
+                    {/* Custom Confirm Modal */}
+                    {showConfirm && (
+                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full">
+                                <h3 className="text-xl font-bold mb-2 text-gray-800">ยืนยันการเริ่มใหม่</h3>
+                                <p className="text-gray-600 mb-6">คุณต้องการดึงตัวเลขทั้งหมดกลับมาเก็บที่ตารางใช่หรือไม่?</p>
+                                <div className="flex justify-end gap-3">
+                                    <button 
+                                        onClick={() => setShowConfirm(false)}
+                                        className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 font-medium rounded-lg transition-colors"
+                                    >
+                                        ยกเลิก
+                                    </button>
+                                    <button 
+                                        onClick={confirmReset}
+                                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors shadow-sm"
+                                    >
+                                        ยืนยันเริ่มใหม่
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
