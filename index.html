@@ -76,6 +76,7 @@
 
                 const element = e.currentTarget;
                 const rect = element.getBoundingClientRect();
+                const computedStyle = window.getComputedStyle(element);
                 
                 setGlobalDrag({
                     id,
@@ -85,7 +86,11 @@
                     startX: e.clientX,
                     startY: e.clientY,
                     clientX: e.clientX,
-                    clientY: e.clientY
+                    clientY: e.clientY,
+                    // เก็บขนาดขณะเริ่มจับ เพื่อให้นำไปใช้เป็นขนาดตอนกำลังลาก
+                    dragWidth: rect.width,
+                    dragHeight: rect.height,
+                    dragFontSize: computedStyle.fontSize
                 });
             };
 
@@ -127,13 +132,16 @@
                             ));
                         }
                     } else if (isInsideImage) {
-                        // คำนวณจุดกึ่งกลางของตัวเลขที่ปล่อยลงบนภาพ
-                        let dropCenterX = clientX - containerRect.left - globalDrag.offsetX + 16;
-                        let dropCenterY = clientY - containerRect.top - globalDrag.offsetY + 16;
+                        // คำนวณจุดกึ่งกลางของตัวเลขที่ปล่อยลงบนภาพ โดยใช้ขนาดดั้งเดิมของตัวที่ถูกลาก
+                        const halfW = globalDrag.dragWidth / 2;
+                        const halfH = globalDrag.dragHeight / 2;
+
+                        let dropCenterX = clientX - containerRect.left - globalDrag.offsetX + halfW;
+                        let dropCenterY = clientY - containerRect.top - globalDrag.offsetY + halfH;
 
                         // จำกัดไม่ให้ออกนอกกรอบรูป
-                        dropCenterX = Math.max(16, Math.min(dropCenterX, containerRect.width - 16));
-                        dropCenterY = Math.max(16, Math.min(dropCenterY, containerRect.height - 16));
+                        dropCenterX = Math.max(halfW, Math.min(dropCenterX, containerRect.width - halfW));
+                        dropCenterY = Math.max(halfH, Math.min(dropCenterY, containerRect.height - halfH));
 
                         // คำนวณเป็นเปอร์เซ็นต์ (ทำให้รองรับ Responsive)
                         const xPct = (dropCenterX / containerRect.width) * 100;
@@ -204,7 +212,8 @@
                             <div 
                                 ref={containerRef} 
                                 className="relative w-full overflow-hidden select-none bg-gray-50 flex items-center justify-center"
-                                style={{ minHeight: '300px' }}
+                                /* กำหนด container-type เพื่อให้อ้างอิงการย่อขยายแบบ cqw ได้ */
+                                style={{ minHeight: '300px', containerType: 'inline-size' }}
                             >
                                 {/* Background Image */}
                                 <img 
@@ -226,12 +235,16 @@
                                 {tokens.filter((t) => t.isPlaced).map((t) => (
                                     <div
                                         key={t.id}
-                                        className={`absolute w-8 h-8 flex items-center justify-center rounded-full text-white font-bold cursor-grab select-none shadow-md touch-none transition-transform
+                                        className={`absolute flex items-center justify-center rounded-full text-white font-bold cursor-grab select-none shadow-md touch-none transition-transform
                                             ${globalDrag?.id === t.id ? 'opacity-0' : 'bg-red-600 hover:bg-red-500 hover:scale-110 z-40'}
                                         `}
                                         style={{ 
                                             left: `${t.xPct}%`, 
                                             top: `${t.yPct}%`,
+                                            // ใช้ cqw (Container Query Width) เพื่อให้ขยาย/หด ตามความกว้างของภาพ
+                                            width: 'max(20px, 3.5cqw)', 
+                                            height: 'max(20px, 3.5cqw)',
+                                            fontSize: 'max(10px, 1.6cqw)',
                                             transform: 'translate(-50%, -50%)' // จัดให้อยู่ตรงกลางของเปอร์เซ็นต์พอดี
                                         }}
                                         onPointerDown={(e) => handlePointerDown(e, t.id, 'image')}
@@ -283,10 +296,14 @@
                     {/* Dragging Clone Element (ลอยอยู่เหนือทุกสิ่งขณะลาก) */}
                     {globalDrag && (
                         <div
-                            className="fixed flex items-center justify-center w-8 h-8 rounded-full bg-orange-500 text-white font-bold shadow-2xl scale-125 z-[100] cursor-grabbing pointer-events-none"
+                            className="fixed flex items-center justify-center rounded-full bg-orange-500 text-white font-bold shadow-2xl scale-125 z-[100] cursor-grabbing pointer-events-none"
                             style={{
                                 left: `${globalDrag.clientX - globalDrag.offsetX}px`,
                                 top: `${globalDrag.clientY - globalDrag.offsetY}px`,
+                                // นำขนาดของตัวที่คลิกจับ มาแสดงตอนลอย
+                                width: `${globalDrag.dragWidth}px`,
+                                height: `${globalDrag.dragHeight}px`,
+                                fontSize: globalDrag.dragFontSize
                             }}
                         >
                             {globalDrag.id}
